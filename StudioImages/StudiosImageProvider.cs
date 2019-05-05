@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using MediaBrowser.Model.IO;
 using System;
 using MediaBrowser.Common.Progress;
+using MediaBrowser.Model.Configuration;
 
 namespace StudioImages
 {
@@ -47,7 +48,7 @@ namespace StudioImages
             };
         }
 
-        public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
+        public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, LibraryOptions libraryOptions, CancellationToken cancellationToken)
         {
             return GetImages(item, true, true, cancellationToken);
         }
