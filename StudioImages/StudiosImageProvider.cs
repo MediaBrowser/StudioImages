@@ -63,7 +63,7 @@ namespace StudioImages
 
                 posterPath = await EnsurePosterList(posterPath, cancellationToken).ConfigureAwait(false);
 
-                list.Add(GetImage(item, posterPath, ImageType.Primary, "folder"));
+                list.Add(await GetImage(item, posterPath, ImageType.Primary, "folder").ConfigureAwait(false));
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -74,15 +74,15 @@ namespace StudioImages
 
                 thumbsPath = await EnsureThumbsList(thumbsPath, cancellationToken).ConfigureAwait(false);
 
-                list.Add(GetImage(item, thumbsPath, ImageType.Thumb, "thumb"));
+                list.Add(await GetImage(item, thumbsPath, ImageType.Thumb, "thumb").ConfigureAwait(false));
             }
 
             return list.Where(i => i != null);
         }
 
-        private RemoteImageInfo GetImage(BaseItem item, string filename, ImageType type, string remoteFilename)
+        private async Task<RemoteImageInfo> GetImage(BaseItem item, string filename, ImageType type, string remoteFilename)
         {
-            var list = GetAvailableImages(filename, _fileSystem);
+            var list = await GetAvailableImages(filename, _fileSystem).ConfigureAwait(false);
 
             var match = FindMatch(item, list);
 
@@ -192,9 +192,9 @@ namespace StudioImages
                 .Replace("/", string.Empty);
         }
 
-        public IEnumerable<string> GetAvailableImages(string file, IFileSystem fileSystem)
+        public async Task<List<string>> GetAvailableImages(string file, IFileSystem fileSystem)
         {
-            using (var fileStream = fileSystem.GetFileStream(file, FileOpenMode.Open, FileAccessMode.Read, FileShareMode.Read))
+            using (var fileStream = fileSystem.GetFileStream(file, FileOpenMode.Open, FileAccessMode.Read, FileShareMode.Read, true))
             {
                 using (var reader = new StreamReader(fileStream))
                 {
@@ -202,7 +202,7 @@ namespace StudioImages
 
                     while (!reader.EndOfStream)
                     {
-                        var text = reader.ReadLine();
+                        var text = await reader.ReadLineAsync().ConfigureAwait(false);
 
                         if (!string.IsNullOrWhiteSpace(text))
                         {
