@@ -43,7 +43,7 @@ namespace StudioImages
         {
             return new List<ImageType>
             {
-                ImageType.Primary, 
+                ImageType.Primary,
                 ImageType.Thumb
             };
         }
@@ -59,30 +59,46 @@ namespace StudioImages
 
             if (posters)
             {
-                var posterPath = Path.Combine(_config.ApplicationPaths.CachePath, "imagesbyname", "remotestudioposters.txt");
+                const string url = "https://raw.github.com/MediaBrowser/MediaBrowser.Resources/master/images/imagesbyname/studioposters.txt";
 
-                posterPath = await EnsurePosterList(posterPath, cancellationToken).ConfigureAwait(false);
-
-                list.Add(await GetImage(item, posterPath, ImageType.Primary, "folder").ConfigureAwait(false));
+                using (var response = await GetList(url, _httpClient, _fileSystem, cancellationToken).ConfigureAwait(false))
+                {
+                    using (var stream = response.Content)
+                    {
+                        var image = await GetImage(item, stream, ImageType.Primary, "folder").ConfigureAwait(false);
+                        if (image != null)
+                        {
+                            list.Add(image);
+                        }
+                    }
+                }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             if (thumbs)
             {
-                var thumbsPath = Path.Combine(_config.ApplicationPaths.CachePath, "imagesbyname", "remotestudiothumbs.txt");
+                const string url = "https://raw.github.com/MediaBrowser/MediaBrowser.Resources/master/images/imagesbyname/studiothumbs.txt";
 
-                thumbsPath = await EnsureThumbsList(thumbsPath, cancellationToken).ConfigureAwait(false);
-
-                list.Add(await GetImage(item, thumbsPath, ImageType.Thumb, "thumb").ConfigureAwait(false));
+                using (var response = await GetList(url, _httpClient, _fileSystem, cancellationToken).ConfigureAwait(false))
+                {
+                    using (var stream = response.Content)
+                    {
+                        var image = await GetImage(item, stream, ImageType.Thumb, "thumb").ConfigureAwait(false);
+                        if (image != null)
+                        {
+                            list.Add(image);
+                        }
+                    }
+                }
             }
 
-            return list.Where(i => i != null);
+            return list;
         }
 
-        private async Task<RemoteImageInfo> GetImage(BaseItem item, string filename, ImageType type, string remoteFilename)
+        private async Task<RemoteImageInfo> GetImage(BaseItem item, Stream stream, ImageType type, string remoteFilename)
         {
-            var list = await GetAvailableImages(filename, _fileSystem).ConfigureAwait(false);
+            var list = await GetAvailableImages(stream, _fileSystem).ConfigureAwait(false);
 
             var match = FindMatch(item, list);
 
@@ -106,19 +122,6 @@ namespace StudioImages
             return string.Format("https://raw.github.com/MediaBrowser/MediaBrowser.Resources/master/images/imagesbyname/studios/{0}/{1}.jpg", image, filename);
         }
 
-        private Task<string> EnsureThumbsList(string file, CancellationToken cancellationToken)
-        {
-            const string url = "https://raw.github.com/MediaBrowser/MediaBrowser.Resources/master/images/imagesbyname/studiothumbs.txt";
-
-            return EnsureList(url, file, _httpClient, _fileSystem, cancellationToken);
-        }
-
-        private Task<string> EnsurePosterList(string file, CancellationToken cancellationToken)
-        {
-            const string url = "https://raw.github.com/MediaBrowser/MediaBrowser.Resources/master/images/imagesbyname/studioposters.txt";
-
-            return EnsureList(url, file, _httpClient, _fileSystem, cancellationToken);
-        }
 
         public int Order
         {
@@ -144,35 +147,16 @@ namespace StudioImages
         /// <param name="fileSystem">The file system.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>Task.</returns>
-        public async Task<string> EnsureList(string url, string file, IHttpClient httpClient, IFileSystem fileSystem, CancellationToken cancellationToken)
+        public Task<HttpResponseInfo> GetList(string url, IHttpClient httpClient, IFileSystem fileSystem, CancellationToken cancellationToken)
         {
-            var fileInfo = fileSystem.GetFileInfo(file);
-
-            if (!fileInfo.Exists || (DateTimeOffset.UtcNow - fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays > 1)
+            return httpClient.GetResponse(new HttpRequestOptions
             {
-                var temp = await httpClient.GetTempFile(new HttpRequestOptions
-                {
-                    CancellationToken = cancellationToken,
-                    Progress = new SimpleProgress<double>(),
-                    Url = url
-
-                }).ConfigureAwait(false);
-
-                fileSystem.CreateDirectory(fileSystem.GetDirectoryName(file));
-
-                try
-                {
-                    fileSystem.CopyFile(temp, file, true);
-                }
-                catch
-                {
-
-                }
-
-                return temp;
-            }
-
-            return file;
+                CancellationToken = cancellationToken,
+                Progress = new SimpleProgress<double>(),
+                Url = url,
+                CacheLength = TimeSpan.FromDays(1),
+                CacheMode = CacheMode.Unconditional
+            });
         }
 
         public string FindMatch(BaseItem item, IEnumerable<string> images)
@@ -192,26 +176,23 @@ namespace StudioImages
                 .Replace("/", string.Empty);
         }
 
-        public async Task<List<string>> GetAvailableImages(string file, IFileSystem fileSystem)
+        public async Task<List<string>> GetAvailableImages(Stream stream, IFileSystem fileSystem)
         {
-            using (var fileStream = fileSystem.GetFileStream(file, FileOpenMode.Open, FileAccessMode.Read, FileShareMode.Read, true))
+            using (var reader = new StreamReader(stream))
             {
-                using (var reader = new StreamReader(fileStream))
+                var lines = new List<string>();
+
+                while (!reader.EndOfStream)
                 {
-                    var lines = new List<string>();
+                    var text = await reader.ReadLineAsync().ConfigureAwait(false);
 
-                    while (!reader.EndOfStream)
+                    if (!string.IsNullOrWhiteSpace(text))
                     {
-                        var text = await reader.ReadLineAsync().ConfigureAwait(false);
-
-                        if (!string.IsNullOrWhiteSpace(text))
-                        {
-                            lines.Add(text);
-                        }
+                        lines.Add(text);
                     }
-
-                    return lines;
                 }
+
+                return lines;
             }
         }
 
